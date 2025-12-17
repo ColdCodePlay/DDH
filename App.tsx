@@ -4,15 +4,15 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ProductCard from './components/ProductCard';
 import AdminDashboard from './components/AdminDashboard';
-import { Page, Product, QuoteRequest, User } from './types';
+import { Page, Product, QuoteRequest, User, BrandSettings } from './types';
 import { storageService } from './services/storageService';
-import { getSpiceExpertAdvice } from './services/geminiService';
 import { APP_CONFIG } from './constants';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>(Page.Home);
   const [user, setUser] = useState<User | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [settings, setSettings] = useState<BrandSettings>(storageService.getSettings());
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -21,12 +21,6 @@ const App: React.FC = () => {
   // Filtering & Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  
-  // AI Assistant State
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiMessages, setAiMessages] = useState<{role: 'user' | 'ai', text: string}[]>([]);
-  const [aiInput, setAiInput] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
 
   // Quote Form State
   const [quoteFormData, setQuoteFormData] = useState({
@@ -41,6 +35,7 @@ const App: React.FC = () => {
   useEffect(() => {
     setUser(storageService.getCurrentUser());
     setProducts(storageService.getProducts());
+    setSettings(storageService.getSettings());
   }, []);
 
   const handleLogin = (e: React.FormEvent) => {
@@ -89,23 +84,9 @@ const App: React.FC = () => {
     setQuoteFormData({ name: '', email: '', phone: '', quantity: 0, message: '', consent: false });
   };
 
-  const handleAiAsk = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiInput.trim()) return;
-
-    const userMsg = aiInput;
-    setAiMessages(prev => [...prev, { role: 'user', text: userMsg }]);
-    setAiInput('');
-    setAiLoading(true);
-
-    const aiResponse = await getSpiceExpertAdvice(userMsg);
-    setAiMessages(prev => [...prev, { role: 'ai', text: aiResponse }]);
-    setAiLoading(false);
-  };
-
   // Derived filtered products - Only show active products to customers
   const filteredProducts = products.filter(product => {
-    const isVisible = product.isActive !== false; // Handle legacy data where isActive might be undefined
+    const isVisible = product.isActive !== false;
     const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          product.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -121,6 +102,7 @@ const App: React.FC = () => {
         setCurrentPage={setCurrentPage} 
         user={user} 
         onLogout={handleLogout}
+        settings={settings}
       />
 
       <main className="flex-grow">
@@ -130,7 +112,7 @@ const App: React.FC = () => {
             <section className="relative h-[85vh] flex items-center overflow-hidden">
               <div className="absolute inset-0">
                 <img 
-                  src="https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=2000" 
+                  src={settings.heroImage} 
                   className="w-full h-full object-cover"
                   alt="Spice Background"
                 />
@@ -143,10 +125,10 @@ const App: React.FC = () => {
                     Direct from Origin Farms
                   </div>
                   <h1 className="text-6xl md:text-8xl font-bold mb-6 leading-tight">
-                    The Soul of <br/><span className="text-spice-secondary italic">Indian Cuisine</span>
+                    {settings.heroTitle}
                   </h1>
                   <p className="text-xl text-stone-200 mb-10 leading-relaxed font-light">
-                    DDH Masale delivers high-curcumin turmeric, premium whole spices, and authentic blends to wholesalers and food creators worldwide.
+                    {settings.heroSubtitle}
                   </p>
                   <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6">
                     <button 
@@ -155,12 +137,6 @@ const App: React.FC = () => {
                     >
                       <span>Explore Collection</span>
                       <i className="fas fa-arrow-right text-sm"></i>
-                    </button>
-                    <button 
-                      onClick={() => setAiOpen(true)}
-                      className="bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/30 px-8 py-4 rounded-xl text-lg font-bold transition-all"
-                    >
-                      Talk to Spice Expert
                     </button>
                   </div>
                 </div>
@@ -249,6 +225,8 @@ const App: React.FC = () => {
           <AdminDashboard 
             products={products} 
             setProducts={setProducts} 
+            settings={settings}
+            setSettings={setSettings}
           />
         )}
 
@@ -288,7 +266,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <Footer setCurrentPage={setCurrentPage} user={user} />
+      <Footer setCurrentPage={setCurrentPage} user={user} settings={settings} />
 
       {/* Quote Form Modal */}
       {showQuoteForm && selectedProduct && (
@@ -401,60 +379,6 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* AI Assistant FAB and Chat */}
-      <div className="fixed bottom-8 right-8 z-[90]">
-        {!aiOpen ? (
-          <button 
-            onClick={() => setAiOpen(true)}
-            className="w-16 h-16 bg-spice-primary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform group animate-bounce"
-          >
-            <i className="fas fa-robot text-2xl"></i>
-          </button>
-        ) : (
-          <div className="bg-white rounded-3xl shadow-2xl w-[90vw] max-w-sm h-[500px] flex flex-col overflow-hidden border border-stone-100 ring-1 ring-black/5">
-            <div className="bg-spice-primary p-4 text-white flex justify-between items-center">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-                  <i className="fas fa-leaf"></i>
-                </div>
-                <div className="font-bold text-sm">DDH Spice Expert</div>
-              </div>
-              <button onClick={() => setAiOpen(false)}><i className="fas fa-times"></i></button>
-            </div>
-            
-            <div className="flex-grow p-4 overflow-y-auto space-y-4 bg-stone-50">
-              {aiMessages.map((msg, idx) => (
-                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${
-                    msg.role === 'user' 
-                    ? 'bg-spice-primary text-white rounded-tr-none' 
-                    : 'bg-white text-stone-800 border border-stone-100 rounded-tl-none shadow-sm'
-                  }`}>
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-              {aiLoading && <div className="text-xs text-stone-400 italic">Thinking...</div>}
-            </div>
-            
-            <form onSubmit={handleAiAsk} className="p-4 bg-white border-t border-stone-100">
-              <div className="relative">
-                <input 
-                  type="text" 
-                  value={aiInput}
-                  onChange={(e) => setAiInput(e.target.value)}
-                  placeholder="Ask about spices..."
-                  className="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl outline-none pr-12 text-sm"
-                />
-                <button type="submit" className="absolute right-2 top-1.5 w-9 h-9 bg-spice-primary text-white rounded-lg flex items-center justify-center">
-                  <i className="fas fa-paper-plane text-xs"></i>
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-      </div>
     </div>
   );
 };

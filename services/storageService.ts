@@ -1,11 +1,12 @@
 
-import { Product, QuoteRequest, User } from '../types';
-import { INITIAL_PRODUCTS } from '../constants';
+import { Product, QuoteRequest, User, BrandSettings } from '../types';
+import { INITIAL_PRODUCTS, APP_CONFIG } from '../constants';
 
 // Versioning keys to ensure a clean state for the latest logic updates
 const PRODUCTS_KEY = 'ddh_products_v2';
 const QUOTES_KEY = 'ddh_quotes_v2';
 const AUTH_KEY = 'ddh_auth_v2';
+const SETTINGS_KEY = 'ddh_settings_v2';
 
 export const storageService = {
   // Products
@@ -47,7 +48,6 @@ export const storageService = {
   },
   deleteProduct: (id: string) => {
     const products = storageService.getProducts();
-    // Use strictly string-based comparison to avoid any number/string mismatch issues
     const filteredProducts = products.filter(p => String(p.id) !== String(id));
     storageService.saveProducts(filteredProducts);
     return filteredProducts;
@@ -75,6 +75,40 @@ export const storageService = {
       localStorage.setItem(QUOTES_KEY, JSON.stringify(quotes));
     }
     return quotes;
+  },
+
+  // Settings
+  getSettings: (): BrandSettings => {
+    try {
+      const data = localStorage.getItem(SETTINGS_KEY);
+      if (!data) {
+        const defaultSettings: BrandSettings = {
+          brandName: APP_CONFIG.brandName,
+          heroTitle: 'The Soul of Indian Cuisine',
+          heroSubtitle: 'DDH Masale delivers high-curcumin turmeric, premium whole spices, and authentic blends to wholesalers and food creators worldwide.',
+          heroImage: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=2000',
+          address: '524, Sector 38, Gurgaon, HR, India 122014',
+          contactPhone: APP_CONFIG.contactPhone,
+          contactEmail: APP_CONFIG.contactEmail
+        };
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaultSettings));
+        return defaultSettings;
+      }
+      return JSON.parse(data);
+    } catch (e) {
+      return {
+        brandName: APP_CONFIG.brandName,
+        heroTitle: 'The Soul of Indian Cuisine',
+        heroSubtitle: 'DDH Masale delivers high-curcumin turmeric, premium whole spices, and authentic blends to wholesalers and food creators worldwide.',
+        heroImage: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=2000',
+        address: '524, Sector 38, Gurgaon, HR, India 122014',
+        contactPhone: APP_CONFIG.contactPhone,
+        contactEmail: APP_CONFIG.contactEmail
+      };
+    }
+  },
+  saveSettings: (settings: BrandSettings) => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   },
 
   // Auth

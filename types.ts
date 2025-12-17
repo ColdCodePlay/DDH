@@ -25,6 +25,16 @@ export interface QuoteRequest {
   createdAt: string;
 }
 
+export interface BrandSettings {
+  brandName: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  heroImage: string;
+  address: string;
+  contactPhone: string;
+  contactEmail: string;
+}
+
 export interface User {
   username: string;
   role: 'admin' | 'customer';

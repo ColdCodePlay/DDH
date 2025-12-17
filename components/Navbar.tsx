@@ -1,15 +1,16 @@
 
 import React from 'react';
-import { Page, User } from '../types';
+import { Page, User, BrandSettings } from '../types';
 
 interface NavbarProps {
   currentPage: Page;
   setCurrentPage: (page: Page) => void;
   user: User | null;
   onLogout: () => void;
+  settings: BrandSettings;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage, user, onLogout }) => {
+const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage, user, onLogout, settings }) => {
   return (
     <nav className="bg-white shadow-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -22,8 +23,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage, user, onLo
               <i className="fas fa-mortar-pestle text-white text-2xl"></i>
             </div>
             <div>
-              <span className="text-2xl font-bold tracking-tight text-spice-primary">DDH</span>
-              <span className="text-2xl font-light tracking-tight ml-1 text-stone-700">Masale</span>
+              <span className="text-2xl font-bold tracking-tight text-spice-primary">{settings.brandName.split(' ')[0]}</span>
+              <span className="text-2xl font-light tracking-tight ml-1 text-stone-700">{settings.brandName.split(' ').slice(1).join(' ')}</span>
             </div>
           </div>
           

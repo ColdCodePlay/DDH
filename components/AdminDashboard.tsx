@@ -1,24 +1,29 @@
 
 import React, { useState, useEffect } from 'react';
-import { Product, QuoteRequest } from '../types';
+import { Product, QuoteRequest, BrandSettings } from '../types';
 import { storageService } from '../services/storageService';
 
 interface AdminDashboardProps {
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
+  settings: BrandSettings;
+  setSettings: (settings: BrandSettings) => void;
 }
 
 /**
- * AdminDashboard: Premium management interface for catalog and customer inquiries.
+ * AdminDashboard: Premium management interface for catalog, inquiries, and brand settings.
  */
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, settings, setSettings }) => {
   const [quotes, setQuotes] = useState<QuoteRequest[]>([]);
-  const [activeTab, setActiveTab] = useState<'products' | 'quotes'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'quotes' | 'settings'>('products');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [quoteSearchQuery, setQuoteSearchQuery] = useState('');
   
-  const [formData, setFormData] = useState<Partial<Product>>({
+  // Settings Form State
+  const [settingsFormData, setSettingsFormData] = useState<BrandSettings>(settings);
+
+  const [productFormData, setProductFormData] = useState<Partial<Product>>({
     name: '',
     category: 'Ground Spices',
     description: '',
@@ -35,7 +40,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
 
   const openAddModal = () => {
     setEditingProduct(null);
-    setFormData({
+    setProductFormData({
       name: '',
       category: 'Ground Spices',
       description: '',
@@ -50,22 +55,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
 
   const openEditModal = (product: Product) => {
     setEditingProduct(product);
-    setFormData({ ...product });
+    setProductFormData({ ...product });
     setIsModalOpen(true);
   };
 
   const handleSaveProduct = () => {
-    if (!formData.name || !formData.price || formData.price <= 0) {
+    if (!productFormData.name || !productFormData.price || productFormData.price <= 0) {
       alert("Please provide a valid name and price.");
       return;
     }
 
     let updatedList: Product[];
     if (editingProduct) {
-      updatedList = storageService.updateProduct({ ...editingProduct, ...formData } as Product);
+      updatedList = storageService.updateProduct({ ...editingProduct, ...productFormData } as Product);
     } else {
       updatedList = storageService.addProduct({
-        ...formData as Product,
+        ...productFormData as Product,
         id: Date.now().toString(),
         isActive: true
       });
@@ -86,6 +91,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
     setQuotes([...updatedQuotes]);
   };
 
+  const handleSaveSettings = () => {
+    storageService.saveSettings(settingsFormData);
+    setSettings(settingsFormData);
+    alert('Brand settings updated successfully!');
+  };
+
   const filteredQuotes = quotes.filter(quote => 
     quote.customerName.toLowerCase().includes(quoteSearchQuery.toLowerCase()) ||
     quote.email.toLowerCase().includes(quoteSearchQuery.toLowerCase())
@@ -96,28 +107,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-10 gap-6">
         <div>
           <h2 className="text-4xl font-bold text-stone-900 tracking-tight">Business Controls</h2>
-          <p className="text-stone-500 mt-2 text-lg">Maintain your spice inventory and review client inquiries</p>
+          <p className="text-stone-500 mt-2 text-lg">Maintain your spice inventory, review inquiries, and manage brand identity</p>
         </div>
         
         <div className="flex p-1.5 bg-stone-200/50 rounded-2xl shadow-inner w-full lg:w-auto">
           <button 
             type="button"
             onClick={() => setActiveTab('products')}
-            className={`flex-1 lg:flex-none px-8 py-3 rounded-xl font-bold text-sm transition-all uppercase tracking-widest ${activeTab === 'products' ? 'bg-white text-spice-primary shadow-lg' : 'text-stone-500 hover:text-stone-800'}`}
+            className={`flex-1 lg:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all uppercase tracking-widest ${activeTab === 'products' ? 'bg-white text-spice-primary shadow-lg' : 'text-stone-500 hover:text-stone-800'}`}
           >
             Inventory
           </button>
           <button 
             type="button"
             onClick={() => setActiveTab('quotes')}
-            className={`flex-1 lg:flex-none px-8 py-3 rounded-xl font-bold text-sm transition-all uppercase tracking-widest ${activeTab === 'quotes' ? 'bg-white text-spice-primary shadow-lg' : 'text-stone-500 hover:text-stone-800'}`}
+            className={`flex-1 lg:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all uppercase tracking-widest ${activeTab === 'quotes' ? 'bg-white text-spice-primary shadow-lg' : 'text-stone-500 hover:text-stone-800'}`}
           >
             Inquiries
+          </button>
+          <button 
+            type="button"
+            onClick={() => setActiveTab('settings')}
+            className={`flex-1 lg:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all uppercase tracking-widest ${activeTab === 'settings' ? 'bg-white text-spice-primary shadow-lg' : 'text-stone-500 hover:text-stone-800'}`}
+          >
+            Settings
           </button>
         </div>
       </div>
 
-      {activeTab === 'products' ? (
+      {activeTab === 'products' && (
         <div className="bg-white rounded-[2rem] shadow-2xl shadow-stone-200/50 border border-stone-100 overflow-hidden">
           <div className="p-8 border-b border-stone-50 flex flex-col sm:flex-row justify-between items-center bg-stone-50/20 gap-4">
             <div>
@@ -204,7 +222,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
             </table>
           </div>
         </div>
-      ) : (
+      )}
+
+      {activeTab === 'quotes' && (
         <div className="bg-white rounded-[2rem] shadow-2xl shadow-stone-200/50 border border-stone-100 overflow-hidden">
           <div className="p-8 border-b border-stone-50 flex flex-col sm:flex-row justify-between items-center bg-stone-50/20 gap-4">
             <div>
@@ -212,7 +232,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
               <p className="text-sm text-stone-400 font-medium uppercase tracking-wide mt-1">{filteredQuotes.length} Total Results</p>
             </div>
             
-            {/* Inquiry Search Bar */}
             <div className="relative w-full sm:w-80 group">
               <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-spice-primary transition-colors"></i>
               <input 
@@ -312,6 +331,115 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
         </div>
       )}
 
+      {activeTab === 'settings' && (
+        <div className="bg-white rounded-[2rem] shadow-2xl shadow-stone-200/50 border border-stone-100 p-10">
+          <div className="max-w-4xl mx-auto">
+            <h3 className="text-3xl font-bold text-stone-900 mb-8 border-b border-stone-100 pb-4">Brand & Site Configuration</h3>
+            
+            <div className="space-y-8">
+              {/* Brand Identity */}
+              <section className="bg-stone-50/50 p-6 rounded-3xl border border-stone-100">
+                <h4 className="text-xs font-black uppercase tracking-[0.2em] text-spice-primary mb-6 flex items-center">
+                  <i className="fas fa-fingerprint mr-2"></i> Brand Identity
+                </h4>
+                <div className="grid grid-cols-1 gap-6">
+                  <div>
+                    <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Brand Name</label>
+                    <input 
+                      type="text"
+                      className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
+                      value={settingsFormData.brandName}
+                      onChange={(e) => setSettingsFormData({...settingsFormData, brandName: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Hero Banner Section */}
+              <section className="bg-stone-50/50 p-6 rounded-3xl border border-stone-100">
+                <h4 className="text-xs font-black uppercase tracking-[0.2em] text-spice-primary mb-6 flex items-center">
+                  <i className="fas fa-image mr-2"></i> Homepage Hero Banner
+                </h4>
+                <div className="grid grid-cols-1 gap-6">
+                  <div>
+                    <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Hero Title</label>
+                    <input 
+                      type="text"
+                      className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
+                      value={settingsFormData.heroTitle}
+                      onChange={(e) => setSettingsFormData({...settingsFormData, heroTitle: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Hero Subtitle</label>
+                    <textarea 
+                      className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all h-24 font-medium text-stone-700 resize-none"
+                      value={settingsFormData.heroSubtitle}
+                      onChange={(e) => setSettingsFormData({...settingsFormData, heroSubtitle: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Hero Background Image URL</label>
+                    <input 
+                      type="text"
+                      className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
+                      value={settingsFormData.heroImage}
+                      onChange={(e) => setSettingsFormData({...settingsFormData, heroImage: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Contact Information */}
+              <section className="bg-stone-50/50 p-6 rounded-3xl border border-stone-100">
+                <h4 className="text-xs font-black uppercase tracking-[0.2em] text-spice-primary mb-6 flex items-center">
+                  <i className="fas fa-map-pin mr-2"></i> Contact Details
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Physical Address</label>
+                    <input 
+                      type="text"
+                      className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
+                      value={settingsFormData.address}
+                      onChange={(e) => setSettingsFormData({...settingsFormData, address: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Contact Phone</label>
+                    <input 
+                      type="text"
+                      className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
+                      value={settingsFormData.contactPhone}
+                      onChange={(e) => setSettingsFormData({...settingsFormData, contactPhone: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Business Email</label>
+                    <input 
+                      type="email"
+                      className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
+                      value={settingsFormData.contactEmail}
+                      onChange={(e) => setSettingsFormData({...settingsFormData, contactEmail: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <div className="flex justify-end pt-4">
+                <button 
+                  onClick={handleSaveSettings}
+                  className="bg-spice-primary text-white px-10 py-4 rounded-2xl font-bold hover:bg-red-900 transition-all shadow-xl active:scale-95 flex items-center space-x-3"
+                >
+                  <i className="fas fa-save"></i>
+                  <span>Save All Changes</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Product Management Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-center justify-center p-6 z-[110] animate-in fade-in duration-300">
@@ -337,8 +465,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
                   <input 
                     type="text"
                     className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800 placeholder:text-stone-300"
-                    value={formData.name || ''}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    value={productFormData.name || ''}
+                    onChange={(e) => setProductFormData({...productFormData, name: e.target.value})}
                     placeholder="e.g. Malabar Black Pepper"
                   />
                 </div>
@@ -347,8 +475,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.2em] ml-1">Category</label>
                     <select 
                       className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
-                      value={formData.category}
-                      onChange={(e) => setFormData({...formData, category: e.target.value})}
+                      value={productFormData.category}
+                      onChange={(e) => setProductFormData({...productFormData, category: e.target.value})}
                     >
                       <option>Ground Spices</option>
                       <option>Whole Spices</option>
@@ -361,8 +489,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
                     <input 
                       type="number"
                       className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
-                      value={formData.price || 0}
-                      onChange={(e) => setFormData({...formData, price: Number(e.target.value)})}
+                      value={productFormData.price || 0}
+                      onChange={(e) => setProductFormData({...productFormData, price: Number(e.target.value)})}
                     />
                   </div>
                 </div>
@@ -372,8 +500,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
                     <input 
                       type="text"
                       className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
-                      value={formData.unit || ''}
-                      onChange={(e) => setFormData({...formData, unit: e.target.value})}
+                      value={productFormData.unit || ''}
+                      onChange={(e) => setProductFormData({...productFormData, unit: e.target.value})}
                       placeholder="kg / g / pack"
                     />
                   </div>
@@ -382,8 +510,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
                     <input 
                       type="number"
                       className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
-                      value={formData.moq || 1}
-                      onChange={(e) => setFormData({...formData, moq: Number(e.target.value)})}
+                      value={productFormData.moq || 1}
+                      onChange={(e) => setProductFormData({...productFormData, moq: Number(e.target.value)})}
                     />
                   </div>
                 </div>
@@ -392,8 +520,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
                   <input 
                     type="text"
                     className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
-                    value={formData.image || ''}
-                    onChange={(e) => setFormData({...formData, image: e.target.value})}
+                    value={productFormData.image || ''}
+                    onChange={(e) => setProductFormData({...productFormData, image: e.target.value})}
                     placeholder="https://..."
                   />
                 </div>
@@ -401,8 +529,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts }
                   <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.2em] ml-1">Story & Description</label>
                   <textarea 
                     className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all h-32 resize-none font-bold text-stone-800"
-                    value={formData.description || ''}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    value={productFormData.description || ''}
+                    onChange={(e) => setProductFormData({...productFormData, description: e.target.value})}
                     placeholder="Flavor notes, origin story..."
                   ></textarea>
                 </div>

@@ -1,8 +1,5 @@
 {
   "name": "DDH Masale - Premium Indian Spices",
   "description": "A comprehensive e-commerce platform for DDH Masale featuring a product catalog, B2B quote requests, and a robust admin dashboard for content management.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ]
+  "requestFramePermissions": []
 }

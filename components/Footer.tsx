@@ -1,14 +1,14 @@
 
 import React from 'react';
-import { APP_CONFIG } from '../constants.tsx';
-import { Page, User } from '../types';
+import { Page, User, BrandSettings } from '../types';
 
 interface FooterProps {
   setCurrentPage: (page: Page) => void;
   user: User | null;
+  settings: BrandSettings;
 }
 
-const Footer: React.FC<FooterProps> = ({ setCurrentPage, user }) => {
+const Footer: React.FC<FooterProps> = ({ setCurrentPage, user, settings }) => {
   return (
     <footer className="bg-stone-900 text-stone-400 py-16">
       <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-12">
@@ -17,7 +17,7 @@ const Footer: React.FC<FooterProps> = ({ setCurrentPage, user }) => {
             <div className="w-10 h-10 bg-spice-primary rounded-full flex items-center justify-center mr-3 shadow-lg">
               <i className="fas fa-mortar-pestle text-white text-xl"></i>
             </div>
-            <span className="text-2xl font-bold text-white tracking-tight">{APP_CONFIG.brandName}</span>
+            <span className="text-2xl font-bold text-white tracking-tight">{settings.brandName}</span>
           </div>
           <p className="text-sm leading-relaxed mb-6">
             Bringing you the authentic taste of Indian heritage since 1985. Premium quality spices, ethically sourced and masterfully blended.
@@ -70,22 +70,22 @@ const Footer: React.FC<FooterProps> = ({ setCurrentPage, user }) => {
           <ul className="space-y-4 text-sm">
             <li className="flex items-start">
               <i className="fas fa-map-marker-alt mt-1 mr-3 text-spice-primary"></i>
-              <span>524, Sector 38, Gurgaon, HR, India 122014</span>
+              <span>{settings.address}</span>
             </li>
             <li className="flex items-center">
               <i className="fas fa-phone mt-1 mr-3 text-spice-primary"></i>
-              <span>{APP_CONFIG.contactPhone}</span>
+              <span>{settings.contactPhone}</span>
             </li>
             <li className="flex items-center">
               <i className="fas fa-envelope mt-1 mr-3 text-spice-primary"></i>
-              <span>{APP_CONFIG.contactEmail}</span>
+              <span>{settings.contactEmail}</span>
             </li>
           </ul>
         </div>
       </div>
       
       <div className="max-w-7xl mx-auto px-4 mt-16 pt-8 border-t border-stone-800 text-center text-xs">
-        &copy; {new Date().getFullYear()} {APP_CONFIG.brandName}. All rights reserved. | Crafted with precision.
+        &copy; {new Date().getFullYear()} {settings.brandName}. All rights reserved. | Crafted with precision.
       </div>
     </footer>
   );
