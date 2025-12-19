@@ -1,86 +1,275 @@
-
-import { Product, QuoteRequest, User, BrandSettings } from '../types';
+import { Product, QuoteRequest, User, BrandSettings, Review } from '../types';
 import { INITIAL_PRODUCTS, APP_CONFIG } from '../constants';
+import { supabase } from './supabaseClient';
 
-// Versioning keys to ensure a clean state for the latest logic updates
+// Versioning keys for legacy localStorage (used for migration)
 const PRODUCTS_KEY = 'ddh_products_v2';
 const QUOTES_KEY = 'ddh_quotes_v2';
-const AUTH_KEY = 'ddh_auth_v2';
 const SETTINGS_KEY = 'ddh_settings_v2';
+const AUTH_KEY = 'ddh_auth_v2';
 
 export const storageService = {
+  // Migration Helper: Move data from localStorage to Supabase
+  migrateToSupabase: async () => {
+    const localProducts = localStorage.getItem(PRODUCTS_KEY);
+    const localQuotes = localStorage.getItem(QUOTES_KEY);
+    const localSettings = localStorage.getItem(SETTINGS_KEY);
+
+    if (localProducts) {
+      const products = JSON.parse(localProducts);
+      const { error } = await supabase.from('products').upsert(products);
+      if (!error) localStorage.removeItem(PRODUCTS_KEY);
+    }
+
+    if (localQuotes) {
+      const quotes = JSON.parse(localQuotes);
+      const { error } = await supabase.from('quotes').upsert(quotes);
+      if (!error) localStorage.removeItem(QUOTES_KEY);
+    }
+
+    if (localSettings) {
+      const settings = JSON.parse(localSettings);
+      const { error } = await supabase.from('settings').upsert({ id: 1, ...settings });
+      if (!error) localStorage.removeItem(SETTINGS_KEY);
+    }
+  },
+
   // Products
-  getProducts: (): Product[] => {
+  getProducts: async (): Promise<Product[]> => {
     try {
-      const data = localStorage.getItem(PRODUCTS_KEY);
-      if (!data) {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
         // Initialize with default data if empty
-        localStorage.setItem(PRODUCTS_KEY, JSON.stringify(INITIAL_PRODUCTS));
-        return INITIAL_PRODUCTS;
+        const { data: insertedData, error: insertError } = await supabase
+          .from('products')
+          .insert(INITIAL_PRODUCTS)
+          .select();
+
+        if (insertError) throw insertError;
+        return insertedData as Product[];
       }
-      return JSON.parse(data);
+
+      return data as Product[];
     } catch (e) {
-      console.error("Storage read error:", e);
+      console.error("Database read error:", e);
       return INITIAL_PRODUCTS;
     }
   },
-  saveProducts: (products: Product[]) => {
+
+  saveProducts: async (products: Product[]) => {
     try {
-      localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+      const { error } = await supabase.from('products').upsert(products);
+      if (error) throw error;
     } catch (e) {
-      console.error("Storage write error:", e);
+      console.error("Database write error:", e);
     }
-  },
-  addProduct: (product: Product) => {
-    const products = storageService.getProducts();
-    products.push(product);
-    storageService.saveProducts(products);
-    return products;
-  },
-  updateProduct: (updatedProduct: Product) => {
-    const products = storageService.getProducts();
-    const index = products.findIndex(p => String(p.id) === String(updatedProduct.id));
-    if (index !== -1) {
-      products[index] = updatedProduct;
-      storageService.saveProducts(products);
-    }
-    return products;
-  },
-  deleteProduct: (id: string) => {
-    const products = storageService.getProducts();
-    const filteredProducts = products.filter(p => String(p.id) !== String(id));
-    storageService.saveProducts(filteredProducts);
-    return filteredProducts;
   },
 
-  // Quotes
-  getQuotes: (): QuoteRequest[] => {
+  addProduct: async (product: Product) => {
     try {
-      const data = localStorage.getItem(QUOTES_KEY);
-      return data ? JSON.parse(data) : [];
+      const { data, error } = await supabase
+        .from('products')
+        .insert(product)
+        .select();
+
+      if (error) throw error;
+      return await storageService.getProducts();
     } catch (e) {
+      console.error("Database add error:", e);
       return [];
     }
   },
-  addQuote: (quote: QuoteRequest) => {
-    const quotes = storageService.getQuotes();
-    quotes.unshift(quote);
-    localStorage.setItem(QUOTES_KEY, JSON.stringify(quotes));
-  },
-  updateQuoteStatus: (id: string, status: QuoteRequest['status']) => {
-    const quotes = storageService.getQuotes();
-    const index = quotes.findIndex(q => String(q.id) === String(id));
-    if (index !== -1) {
-      quotes[index].status = status;
-      localStorage.setItem(QUOTES_KEY, JSON.stringify(quotes));
+
+  updateProduct: async (updatedProduct: Product) => {
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update(updatedProduct)
+        .eq('id', updatedProduct.id);
+
+      if (error) throw error;
+      return await storageService.getProducts();
+    } catch (e) {
+      console.error("Database update error:", e);
+      return [];
     }
-    return quotes;
+  },
+
+  deleteProduct: async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      return await storageService.getProducts();
+    } catch (e) {
+      console.error("Database delete error:", e);
+      return [];
+    }
+  },
+
+  // Quotes
+  getQuotes: async (): Promise<QuoteRequest[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('quotes')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data.map(q => ({
+        ...q,
+        productId: q.product_id,
+        productName: q.product_name,
+        customerName: q.customer_name,
+        userId: q.user_id,
+        createdAt: q.created_at
+      })) as QuoteRequest[];
+    } catch (e) {
+      console.error("Database quotes read error:", e);
+      return [];
+    }
+  },
+
+  getUserQuotes: async (userId: string): Promise<QuoteRequest[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('quotes')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data.map(q => ({
+        ...q,
+        productId: q.product_id,
+        productName: q.product_name,
+        customerName: q.customer_name,
+        userId: q.user_id,
+        createdAt: q.created_at
+      })) as QuoteRequest[];
+    } catch (e) {
+      console.error("Database user quotes read error:", e);
+      return [];
+    }
+  },
+
+  addQuote: async (quote: QuoteRequest) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const dbQuote = {
+        id: quote.id,
+        product_id: quote.productId,
+        product_name: quote.productName,
+        customer_name: quote.customerName,
+        email: quote.email,
+        phone: quote.phone,
+        quantity: quote.quantity,
+        message: quote.message,
+        consent: quote.consent,
+        status: quote.status,
+        user_id: session?.user?.id || null
+      };
+      const { error } = await supabase.from('quotes').insert(dbQuote);
+      if (error) throw error;
+    } catch (e) {
+      console.error("Database quote add error:", e);
+    }
+  },
+
+  updateQuoteStatus: async (id: string, status: QuoteRequest['status']) => {
+    try {
+      const { error } = await supabase
+        .from('quotes')
+        .update({ status })
+        .eq('id', id);
+
+      if (error) throw error;
+      return await storageService.getQuotes();
+    } catch (e) {
+      console.error("Database quote update error:", e);
+      return [];
+    }
+  },
+
+  // Reviews
+  getReviews: async (productId: string): Promise<Review[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('*')
+        .eq('product_id', productId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data.map(r => ({
+        ...r,
+        productId: r.product_id,
+        userId: r.user_id,
+        userEmail: r.user_email,
+        createdAt: r.created_at
+      })) as Review[];
+    } catch (e) {
+      console.error("Database reviews read error:", e);
+      return [];
+    }
+  },
+
+  addReview: async (review: Omit<Review, 'id' | 'createdAt'>) => {
+    try {
+      const { error } = await supabase.from('reviews').insert({
+        product_id: review.productId,
+        user_id: review.userId,
+        user_email: review.userEmail,
+        rating: review.rating,
+        comment: review.comment
+      });
+      if (error) throw error;
+    } catch (e) {
+      console.error("Database review add error:", e);
+      throw e;
+    }
+  },
+
+  // Admin Stats
+  getAdminStats: async () => {
+    try {
+      const [productsCount, quotesCount, pendingQuotesCount] = await Promise.all([
+        supabase.from('products').select('*', { count: 'exact', head: true }),
+        supabase.from('quotes').select('*', { count: 'exact', head: true }),
+        supabase.from('quotes').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+      ]);
+
+      return {
+        totalProducts: productsCount.count || 0,
+        totalQuotes: quotesCount.count || 0,
+        pendingQuotes: pendingQuotesCount.count || 0
+      };
+    } catch (e) {
+      console.error("Database stats error:", e);
+      return { totalProducts: 0, totalQuotes: 0, pendingQuotes: 0 };
+    }
   },
 
   // Settings
-  getSettings: (): BrandSettings => {
+  getSettings: async (): Promise<BrandSettings> => {
     try {
-      const data = localStorage.getItem(SETTINGS_KEY);
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('id', 1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "no rows returned"
+
       if (!data) {
         const defaultSettings: BrandSettings = {
           brandName: APP_CONFIG.brandName,
@@ -91,11 +280,20 @@ export const storageService = {
           contactPhone: APP_CONFIG.contactPhone,
           contactEmail: APP_CONFIG.contactEmail
         };
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaultSettings));
-        return defaultSettings;
+
+        const { data: insertedData, error: insertError } = await supabase
+          .from('settings')
+          .insert({ id: 1, ...defaultSettings })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+        return insertedData as BrandSettings;
       }
-      return JSON.parse(data);
+
+      return data as BrandSettings;
     } catch (e) {
+      console.error("Database settings read error:", e);
       return {
         brandName: APP_CONFIG.brandName,
         heroTitle: 'The Soul of Indian Cuisine',
@@ -107,21 +305,62 @@ export const storageService = {
       };
     }
   },
-  saveSettings: (settings: BrandSettings) => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+
+  saveSettings: async (settings: BrandSettings) => {
+    try {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({ id: 1, ...settings });
+      if (error) throw error;
+    } catch (e) {
+      console.error("Database settings save error:", e);
+    }
   },
 
-  // Auth
-  getCurrentUser: (): User | null => {
-    const data = localStorage.getItem(AUTH_KEY);
-    return data ? JSON.parse(data) : null;
+  // Auth (Migrated to Supabase Auth)
+  getCurrentUser: async (): Promise<User | null> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return null;
+
+    return {
+      username: session.user.email || 'User',
+      role: session.user.email === APP_CONFIG.adminEmail ? 'admin' : 'customer',
+      id: session.user.id
+    };
   },
-  login: (username: string) => {
-    const user: User = { username, role: 'admin' };
-    localStorage.setItem(AUTH_KEY, JSON.stringify(user));
-    return user;
+
+  signUp: async (email: string, password: string) => {
+    return await supabase.auth.signUp({ email, password });
   },
-  logout: () => {
-    localStorage.removeItem(AUTH_KEY);
+
+  signIn: async (email: string, password: string) => {
+    return await supabase.auth.signInWithPassword({ email, password });
+  },
+
+  signInWithGoogle: async () => {
+    return await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+  },
+
+  signOut: async () => {
+    return await supabase.auth.signOut();
+  },
+
+  onAuthStateChange: (callback: (user: User | null) => void) => {
+    return supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        callback({
+          username: session.user.email || 'User',
+          role: session.user.email === APP_CONFIG.adminEmail ? 'admin' : 'customer',
+          id: session.user.id
+        });
+      } else {
+        callback(null);
+      }
+    });
   }
 };

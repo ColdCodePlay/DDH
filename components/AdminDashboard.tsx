@@ -19,7 +19,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [quoteSearchQuery, setQuoteSearchQuery] = useState('');
-  
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [stats, setStats] = useState({ totalProducts: 0, totalQuotes: 0, pendingQuotes: 0 });
+
   // Settings Form State
   const [settingsFormData, setSettingsFormData] = useState<BrandSettings>(settings);
 
@@ -35,8 +37,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
   });
 
   useEffect(() => {
-    setQuotes(storageService.getQuotes());
-  }, [activeTab]);
+    const fetchData = async () => {
+      const [fetchedQuotes, fetchedStats] = await Promise.all([
+        storageService.getQuotes(),
+        storageService.getAdminStats()
+      ]);
+      setQuotes(fetchedQuotes);
+      setStats(fetchedStats);
+    };
+    fetchData();
+  }, [activeTab, products]);
 
   const openAddModal = () => {
     setEditingProduct(null);
@@ -59,7 +69,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
     setIsModalOpen(true);
   };
 
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
     if (!productFormData.name || !productFormData.price || productFormData.price <= 0) {
       alert("Please provide a valid name and price.");
       return;
@@ -67,65 +77,139 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
 
     let updatedList: Product[];
     if (editingProduct) {
-      updatedList = storageService.updateProduct({ ...editingProduct, ...productFormData } as Product);
+      updatedList = await storageService.updateProduct({ ...editingProduct, ...productFormData } as Product);
     } else {
-      updatedList = storageService.addProduct({
+      updatedList = await storageService.addProduct({
         ...productFormData as Product,
         id: Date.now().toString(),
         isActive: true
       });
     }
-    
+
     setProducts([...updatedList]);
     setIsModalOpen(false);
   };
 
-  const handleToggleStatus = (product: Product) => {
+  const handleToggleStatus = async (product: Product) => {
     const updatedProduct = { ...product, isActive: !product.isActive };
-    const updatedList = storageService.updateProduct(updatedProduct);
+    const updatedList = await storageService.updateProduct(updatedProduct);
     setProducts([...updatedList]);
   };
 
-  const handleUpdateQuote = (id: string, status: QuoteRequest['status']) => {
-    const updatedQuotes = storageService.updateQuoteStatus(id, status);
+  const handleDeleteProduct = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this product? This action cannot be undone.')) {
+      const updatedList = await storageService.deleteProduct(id);
+      setProducts([...updatedList]);
+    }
+  };
+
+  const handleUpdateQuote = async (id: string, status: QuoteRequest['status']) => {
+    const updatedQuotes = await storageService.updateQuoteStatus(id, status);
     setQuotes([...updatedQuotes]);
   };
 
-  const handleSaveSettings = () => {
-    storageService.saveSettings(settingsFormData);
+  const handleSaveSettings = async () => {
+    await storageService.saveSettings(settingsFormData);
     setSettings(settingsFormData);
     alert('Brand settings updated successfully!');
   };
 
-  const filteredQuotes = quotes.filter(quote => 
-    quote.customerName.toLowerCase().includes(quoteSearchQuery.toLowerCase()) ||
-    quote.email.toLowerCase().includes(quoteSearchQuery.toLowerCase())
-  );
+  const handleExportCSV = () => {
+    const headers = ['ID', 'Product', 'Customer', 'Email', 'Phone', 'Quantity', 'Status', 'Date'];
+    const csvData = quotes.map(q => [
+      q.id,
+      q.productName,
+      q.customerName,
+      q.email,
+      q.phone,
+      q.quantity,
+      q.status,
+      new Date(q.createdAt).toLocaleDateString()
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `ddh_quotes_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const filteredQuotes = quotes.filter(quote => {
+    const matchesSearch = quote.customerName.toLowerCase().includes(quoteSearchQuery.toLowerCase()) ||
+      quote.email.toLowerCase().includes(quoteSearchQuery.toLowerCase()) ||
+      quote.productName.toLowerCase().includes(quoteSearchQuery.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-12">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        <div className="bg-white p-8 rounded-3xl border border-stone-100 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+              <i className="fas fa-box-open text-xl"></i>
+            </div>
+            <span className="text-stone-300 font-bold text-xs uppercase tracking-widest">Inventory</span>
+          </div>
+          <div className="text-3xl font-black text-stone-900">{stats.totalProducts}</div>
+          <div className="text-stone-500 text-sm mt-1 font-medium">Total Products</div>
+        </div>
+
+        <div className="bg-white p-8 rounded-3xl border border-stone-100 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
+              <i className="fas fa-file-invoice-dollar text-xl"></i>
+            </div>
+            <span className="text-stone-300 font-bold text-xs uppercase tracking-widest">Inquiries</span>
+          </div>
+          <div className="text-3xl font-black text-stone-900">{stats.totalQuotes}</div>
+          <div className="text-stone-500 text-sm mt-1 font-medium">Total Quote Requests</div>
+        </div>
+
+        <div className="bg-white p-8 rounded-3xl border border-stone-100 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center">
+              <i className="fas fa-clock text-xl"></i>
+            </div>
+            <span className="text-stone-300 font-bold text-xs uppercase tracking-widest">Urgent</span>
+          </div>
+          <div className="text-3xl font-black text-stone-900">{stats.pendingQuotes}</div>
+          <div className="text-stone-500 text-sm mt-1 font-medium">Pending Inquiries</div>
+        </div>
+      </div>
+
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-10 gap-6">
         <div>
           <h2 className="text-4xl font-bold text-stone-900 tracking-tight">Business Controls</h2>
           <p className="text-stone-500 mt-2 text-lg">Maintain your spice inventory, review inquiries, and manage brand identity</p>
         </div>
-        
+
         <div className="flex p-1.5 bg-stone-200/50 rounded-2xl shadow-inner w-full lg:w-auto">
-          <button 
+          <button
             type="button"
             onClick={() => setActiveTab('products')}
             className={`flex-1 lg:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all uppercase tracking-widest ${activeTab === 'products' ? 'bg-white text-spice-primary shadow-lg' : 'text-stone-500 hover:text-stone-800'}`}
           >
             Inventory
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setActiveTab('quotes')}
             className={`flex-1 lg:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all uppercase tracking-widest ${activeTab === 'quotes' ? 'bg-white text-spice-primary shadow-lg' : 'text-stone-500 hover:text-stone-800'}`}
           >
             Inquiries
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setActiveTab('settings')}
             className={`flex-1 lg:flex-none px-6 py-3 rounded-xl font-bold text-sm transition-all uppercase tracking-widest ${activeTab === 'settings' ? 'bg-white text-spice-primary shadow-lg' : 'text-stone-500 hover:text-stone-800'}`}
@@ -142,7 +226,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
               <h3 className="text-2xl font-bold text-stone-800">Master Catalog</h3>
               <p className="text-sm text-stone-400 font-medium uppercase tracking-wide mt-1">{products.length} Products Registered</p>
             </div>
-            <button 
+            <button
               type="button"
               onClick={openAddModal}
               className="w-full sm:w-auto bg-spice-primary text-white px-8 py-4 rounded-2xl hover:bg-red-900 transition-all flex items-center justify-center space-x-3 shadow-xl active:scale-95 group"
@@ -189,7 +273,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
                         </span>
                       </td>
                       <td className="px-8 py-8 text-center">
-                        <button 
+                        <button
                           onClick={() => handleToggleStatus(product)}
                           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${product.isActive ? 'bg-spice-primary' : 'bg-stone-200'}`}
                         >
@@ -205,13 +289,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
                       </td>
                       <td className="px-10 py-8 text-right">
                         <div className="flex justify-end items-center space-x-4">
-                          <button 
+                          <button
                             type="button"
                             onClick={() => openEditModal(product)}
                             className="p-3.5 bg-white text-stone-400 hover:text-blue-600 hover:bg-blue-50 hover:border-blue-100 rounded-2xl transition-all border border-stone-100 shadow-sm"
                             title="Edit Product"
                           >
                             <i className="fas fa-pen-nib text-sm"></i>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProduct(product.id)}
+                            className="p-3.5 bg-white text-stone-400 hover:text-red-600 hover:bg-red-50 hover:border-red-100 rounded-2xl transition-all border border-stone-100 shadow-sm"
+                            title="Delete Product"
+                          >
+                            <i className="fas fa-trash-alt text-sm"></i>
                           </button>
                         </div>
                       </td>
@@ -231,19 +323,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
               <h3 className="text-2xl font-bold text-stone-800">B2B Inquiries</h3>
               <p className="text-sm text-stone-400 font-medium uppercase tracking-wide mt-1">{filteredQuotes.length} Total Results</p>
             </div>
-            
-            <div className="relative w-full sm:w-80 group">
-              <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-spice-primary transition-colors"></i>
-              <input 
-                type="text" 
-                placeholder="Filter by name or email..."
-                value={quoteSearchQuery}
-                onChange={(e) => setQuoteSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-stone-100/50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/5 focus:bg-white focus:border-spice-primary/20 shadow-sm transition-all text-sm font-medium"
-              />
+
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+              <div className="relative w-full sm:w-48">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full pl-4 pr-10 py-3 bg-stone-100/50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/5 focus:bg-white transition-all text-sm font-bold text-stone-700 appearance-none"
+                >
+                  <option value="all">All Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="responded">Responded</option>
+                  <option value="closed">Closed</option>
+                </select>
+                <i className="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none text-xs"></i>
+              </div>
+
+              <div className="relative w-full sm:w-64 group">
+                <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-spice-primary transition-colors"></i>
+                <input
+                  type="text"
+                  placeholder="Search inquiries..."
+                  value={quoteSearchQuery}
+                  onChange={(e) => setQuoteSearchQuery(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-stone-100/50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/5 focus:bg-white focus:border-spice-primary/20 shadow-sm transition-all text-sm font-medium"
+                />
+              </div>
+
+              <button
+                onClick={handleExportCSV}
+                className="w-full sm:w-auto bg-white border border-stone-200 text-stone-600 px-6 py-3 rounded-2xl font-bold text-sm hover:bg-stone-50 transition-all flex items-center justify-center space-x-2 shadow-sm"
+              >
+                <i className="fas fa-file-export text-xs"></i>
+                <span>Export CSV</span>
+              </button>
             </div>
           </div>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -279,13 +395,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
                         <div className="text-[10px] text-stone-400 font-bold uppercase tracking-widest mt-1">ID: {quote.productId}</div>
                         {quote.message && (
                           <div className="mt-2 text-xs text-stone-500 italic max-w-[200px] line-clamp-1 group-hover:line-clamp-none transition-all">
-                             "{quote.message}"
+                            "{quote.message}"
                           </div>
                         )}
                       </td>
                       <td className="px-8 py-8 text-center">
-                         <div className="text-xl font-black text-stone-800">{quote.quantity}</div>
-                         <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Requested Units</div>
+                        <div className="text-xl font-black text-stone-800">{quote.quantity}</div>
+                        <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Requested Units</div>
                       </td>
                       <td className="px-8 py-8 text-center">
                         <div className={`inline-flex items-center justify-center w-8 h-8 rounded-full ${quote.consent ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
@@ -293,18 +409,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
                         </div>
                       </td>
                       <td className="px-8 py-8">
-                        <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] border ${
-                          quote.status === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100' : 
-                          quote.status === 'responded' ? 'bg-blue-50 text-blue-600 border-blue-100' : 
-                          'bg-stone-100 text-stone-500 border-stone-200'
-                        }`}>
+                        <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] border ${quote.status === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                          quote.status === 'responded' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                            'bg-stone-100 text-stone-500 border-stone-200'
+                          }`}>
                           {quote.status}
                         </span>
                       </td>
                       <td className="px-10 py-8 text-right">
                         <div className="flex justify-end space-x-3">
                           {quote.status === 'pending' && (
-                            <button 
+                            <button
                               type="button"
                               onClick={() => handleUpdateQuote(quote.id, 'responded')}
                               className="bg-spice-primary text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-900 transition-all shadow-lg active:scale-95"
@@ -312,7 +427,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
                               Resolve
                             </button>
                           )}
-                          <button 
+                          <button
                             type="button"
                             onClick={() => handleUpdateQuote(quote.id, 'closed')}
                             className="p-3 bg-stone-50 text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded-2xl transition-all border border-stone-100"
@@ -335,22 +450,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
         <div className="bg-white rounded-[2rem] shadow-2xl shadow-stone-200/50 border border-stone-100 p-10">
           <div className="max-w-4xl mx-auto">
             <h3 className="text-3xl font-bold text-stone-900 mb-8 border-b border-stone-100 pb-4">Brand & Site Configuration</h3>
-            
+
             <div className="space-y-8">
               {/* Brand Identity */}
               <section className="bg-stone-50/50 p-6 rounded-3xl border border-stone-100">
                 <h4 className="text-xs font-black uppercase tracking-[0.2em] text-spice-primary mb-6 flex items-center">
                   <i className="fas fa-fingerprint mr-2"></i> Brand Identity
                 </h4>
-                <div className="grid grid-cols-1 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Brand Name</label>
-                    <input 
+                    <input
                       type="text"
                       className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
                       value={settingsFormData.brandName}
-                      onChange={(e) => setSettingsFormData({...settingsFormData, brandName: e.target.value})}
+                      onChange={(e) => setSettingsFormData({ ...settingsFormData, brandName: e.target.value })}
                     />
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    {settingsFormData.logo && (
+                      <img src={settingsFormData.logo} alt="Logo Preview" className="w-16 h-16 rounded-2xl object-contain bg-white p-1 border border-stone-200" />
+                    )}
+                    <div>
+                      <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Brand Logo</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-spice-primary/10 file:text-spice-primary hover:file:bg-spice-primary/20"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setSettingsFormData({ ...settingsFormData, logo: reader.result as string });
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               </section>
@@ -363,28 +501,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
                 <div className="grid grid-cols-1 gap-6">
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Hero Title</label>
-                    <input 
+                    <input
                       type="text"
                       className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
                       value={settingsFormData.heroTitle}
-                      onChange={(e) => setSettingsFormData({...settingsFormData, heroTitle: e.target.value})}
+                      onChange={(e) => setSettingsFormData({ ...settingsFormData, heroTitle: e.target.value })}
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Hero Subtitle</label>
-                    <textarea 
+                    <textarea
                       className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all h-24 font-medium text-stone-700 resize-none"
                       value={settingsFormData.heroSubtitle}
-                      onChange={(e) => setSettingsFormData({...settingsFormData, heroSubtitle: e.target.value})}
+                      onChange={(e) => setSettingsFormData({ ...settingsFormData, heroSubtitle: e.target.value })}
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Hero Background Image URL</label>
-                    <input 
+                    <input
                       type="text"
                       className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
                       value={settingsFormData.heroImage}
-                      onChange={(e) => setSettingsFormData({...settingsFormData, heroImage: e.target.value})}
+                      onChange={(e) => setSettingsFormData({ ...settingsFormData, heroImage: e.target.value })}
                     />
                   </div>
                 </div>
@@ -398,36 +536,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="sm:col-span-2">
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Physical Address</label>
-                    <input 
+                    <input
                       type="text"
                       className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
                       value={settingsFormData.address}
-                      onChange={(e) => setSettingsFormData({...settingsFormData, address: e.target.value})}
+                      onChange={(e) => setSettingsFormData({ ...settingsFormData, address: e.target.value })}
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Contact Phone</label>
-                    <input 
+                    <input
                       type="text"
                       className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
                       value={settingsFormData.contactPhone}
-                      onChange={(e) => setSettingsFormData({...settingsFormData, contactPhone: e.target.value})}
+                      onChange={(e) => setSettingsFormData({ ...settingsFormData, contactPhone: e.target.value })}
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.1em] ml-1">Business Email</label>
-                    <input 
+                    <input
                       type="email"
                       className="w-full p-4 bg-white border border-stone-200 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 transition-all font-bold text-stone-800"
                       value={settingsFormData.contactEmail}
-                      onChange={(e) => setSettingsFormData({...settingsFormData, contactEmail: e.target.value})}
+                      onChange={(e) => setSettingsFormData({ ...settingsFormData, contactEmail: e.target.value })}
                     />
                   </div>
                 </div>
               </section>
 
               <div className="flex justify-end pt-4">
-                <button 
+                <button
                   onClick={handleSaveSettings}
                   className="bg-spice-primary text-white px-10 py-4 rounded-2xl font-bold hover:bg-red-900 transition-all shadow-xl active:scale-95 flex items-center space-x-3"
                 >
@@ -445,12 +583,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
         <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-center justify-center p-6 z-[110] animate-in fade-in duration-300">
           <div className="bg-white rounded-[3rem] p-12 w-full max-w-2xl shadow-[0_35px_60px_-15px_rgba(0,0,0,0.3)] transform animate-in slide-in-from-bottom-12 duration-500 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-3 bg-spice-primary"></div>
-            
+
             <div className="flex justify-between items-center mb-10">
               <h2 className="text-4xl font-black text-stone-900 tracking-tight italic">
                 {editingProduct ? 'Edit Entry' : 'New Entry'}
               </h2>
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className="w-12 h-12 flex items-center justify-center bg-stone-50 text-stone-400 hover:text-stone-800 rounded-full transition-all"
               >
@@ -462,75 +600,77 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
               <div className="grid grid-cols-1 gap-6">
                 <div>
                   <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.2em] ml-1">Spice Name</label>
-                  <input 
+                  <input
                     type="text"
                     className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800 placeholder:text-stone-300"
                     value={productFormData.name || ''}
-                    onChange={(e) => setProductFormData({...productFormData, name: e.target.value})}
+                    onChange={(e) => setProductFormData({ ...productFormData, name: e.target.value })}
                     placeholder="e.g. Malabar Black Pepper"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.2em] ml-1">Category</label>
-                    <select 
+                    <select
                       className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
                       value={productFormData.category}
-                      onChange={(e) => setProductFormData({...productFormData, category: e.target.value})}
+                      onChange={(e) => setProductFormData({ ...productFormData, category: e.target.value })}
                     >
                       <option>Ground Spices</option>
                       <option>Whole Spices</option>
                       <option>Blended Spices</option>
                       <option>Seasonings</option>
+                      <option>Nuts</option>
+                      <option>Indian Pickles</option>
                     </select>
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.2em] ml-1">Price (INR)</label>
-                    <input 
+                    <input
                       type="number"
                       className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
                       value={productFormData.price || 0}
-                      onChange={(e) => setProductFormData({...productFormData, price: Number(e.target.value)})}
+                      onChange={(e) => setProductFormData({ ...productFormData, price: Number(e.target.value) })}
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.2em] ml-1">Unit</label>
-                    <input 
+                    <input
                       type="text"
                       className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
                       value={productFormData.unit || ''}
-                      onChange={(e) => setProductFormData({...productFormData, unit: e.target.value})}
+                      onChange={(e) => setProductFormData({ ...productFormData, unit: e.target.value })}
                       placeholder="kg / g / pack"
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.2em] ml-1">Min Order</label>
-                    <input 
+                    <input
                       type="number"
                       className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
                       value={productFormData.moq || 1}
-                      onChange={(e) => setProductFormData({...productFormData, moq: Number(e.target.value)})}
+                      onChange={(e) => setProductFormData({ ...productFormData, moq: Number(e.target.value) })}
                     />
                   </div>
                 </div>
                 <div>
                   <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.2em] ml-1">Image URL</label>
-                  <input 
+                  <input
                     type="text"
                     className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all font-bold text-stone-800"
                     value={productFormData.image || ''}
-                    onChange={(e) => setProductFormData({...productFormData, image: e.target.value})}
+                    onChange={(e) => setProductFormData({ ...productFormData, image: e.target.value })}
                     placeholder="https://..."
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] font-black uppercase text-stone-400 mb-2.5 tracking-[0.2em] ml-1">Story & Description</label>
-                  <textarea 
+                  <textarea
                     className="w-full p-5 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-4 focus:ring-spice-primary/10 focus:bg-white transition-all h-32 resize-none font-bold text-stone-800"
                     value={productFormData.description || ''}
-                    onChange={(e) => setProductFormData({...productFormData, description: e.target.value})}
+                    onChange={(e) => setProductFormData({ ...productFormData, description: e.target.value })}
                     placeholder="Flavor notes, origin story..."
                   ></textarea>
                 </div>
@@ -538,14 +678,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ products, setProducts, 
             </div>
 
             <div className="flex space-x-6 mt-12">
-              <button 
+              <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
                 className="flex-1 px-8 py-5 rounded-[1.5rem] font-black text-stone-400 hover:text-stone-800 hover:bg-stone-50 transition-all text-xs uppercase tracking-widest border border-stone-100"
               >
                 Discard
               </button>
-              <button 
+              <button
                 type="button"
                 onClick={handleSaveProduct}
                 className="flex-2 bg-spice-primary text-white px-10 py-5 rounded-[1.5rem] font-black hover:bg-red-900 transition-all shadow-2xl shadow-red-900/30 text-xs uppercase tracking-widest active:scale-95"
