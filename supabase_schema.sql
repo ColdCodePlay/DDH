@@ -35,6 +35,20 @@ CREATE TABLE IF NOT EXISTS quotes (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 3. Settings Table
+CREATE TABLE IF NOT EXISTS settings (
+  id INTEGER PRIMARY KEY,
+  brand_name TEXT,
+  hero_title TEXT,
+  hero_subtitle TEXT,
+  hero_image TEXT,
+  address TEXT,
+  contact_phone TEXT,
+  contact_email TEXT,
+  logo TEXT,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- 4. Reviews Table
 CREATE TABLE IF NOT EXISTS reviews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
